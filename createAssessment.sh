@@ -19,7 +19,7 @@ timezone="US%2FEastern"
 deviceType="VNX"
 
 #Don't change this
-apiBase="http://dev:3334/api/assessments"
+apiBase="http://app.mitrend.com/api/assessments"
 
 echo "Creating $assessmentName"
 curlResult=$(curl -i -u $email:$password -X POST -d "company=$company&city=$city&country=$country&state=$state&timezone=$timezone" $apiBase)
