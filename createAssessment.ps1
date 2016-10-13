@@ -2,17 +2,18 @@
 [CmdletBinding()]
 Param
 (
-	[string]$path="C:\YOUR\PATH\TO\FILES",
-	[string]$email="YOUR EMAUL",
-	[string]$password="PASSWORD",
+    [string]$path="C:\YOUR\PATH\TO\FILES",
+	[string]$ftpPath="c:\mitrend2\apiSamples\ftpExample.txt",
+	[string]$email=,
+	[string]$password=,
 	#Required for EMC and Partners
 	[string]$company="YOUR COMPANY NAME",
 	#Optional for EMC and Partners, Required for Customers
 	[string]$assessmentName="ASSESSMENT NAME",
 	#Use 2 letter codes for state and country
 	[string]$city = "YOUR CITY",
-	[string]$state="YOUR STATE",
-	[string]$county = "YOUR COUNTRY",
+	[string]$state="MA",
+	[string]$county = "US",
 	#Timezones should be written in the Area/Location format (Note that %2f will escape it for you)
 	[string]$timezone="US%2FEastern",
 	#For available device types look at http://mitrend.com/#api/addFiles
@@ -31,12 +32,14 @@ timezone=$timezone
 }
 
 echo "Creating $assessmentName"
-$content =  Invoke-RestMethod  "$apiBase/assessments" -Headers @{Authorization=("Basic {0}" -f $base64AuthInfo)} -Method Post -Body $body
+try{
+    $content =  Invoke-RestMethod  "$apiBase/assessments" -Headers @{Authorization=("Basic {0}" -f $base64AuthInfo)} -Method Post -Body $body
+}catch [System.Net.WebException] {
+        Write-Error( "FAILED to reach '$URL': $_" )
+        throw $_
+}
 $assessmentId=$content.id
 
-
-
-$paths=Get-ChildItem $path
 $fileUrl="$apiBase/assessments/$assessmentId/files"
 
 #Powershell doesn't provide a way to do multi part form encoding, this code is taken from http://stackoverflow.com/questions/25075010/upload-multiple-files-from-powershell-script
@@ -91,16 +94,39 @@ function Send-Results {
     }
 }
 
-foreach($subPath in $paths)
-{
-		$fullPath = Join-Path $path -childPath $subPath
-		echo $fullPath.name
-		Write-Host "Uploading $fullpath $fileUrl"
-		$fileBody={
-			device_type=$deviceType
-			File = Get-Content($fullPath) -Raw
-		}
-		Send-Results -file $fullPath -url $fileUrl -deviceType $deviceType -base64AuthInfo $base64AuthInfo
+if([System.IO.File]::Exists($path)){
+    $paths=Get-ChildItem $path
+    foreach($subPath in $paths)
+    {
+            $fullPath = Join-Path $path -childPath $subPath
+            echo $fullPath.name
+            Write-Host "Uploading $fullpath $fileUrl"
+            $fileBody={
+                device_type=$deviceType
+                File = Get-Content($fullPath) -Raw
+            }
+            Send-Results -file $fullPath -url $fileUrl -deviceType $deviceType -base64AuthInfo $base64AuthInfo
+    }
+}
+
+if([System.IO.File]::Exists($ftpPath)){
+    $reader = [System.IO.File]::OpenText($ftpPath)
+    try {
+        for() {
+            $line = $reader.ReadLine()
+            if ($line -eq $null) { break }
+            # process the line
+            $base64AuthInfo = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(("{0}:{1}" -f $email,$password)))
+            $body = @{
+                device_type=$deviceType
+                ftpUrl= $line
+            }
+            $content =  Invoke-RestMethod  $fileUrl -Headers @{Authorization=("Basic {0}" -f $base64AuthInfo)} -Method Post -Body $body
+        }
+        }
+    finally {
+        $reader.Close()
+    }
 }
 
 $content =  Invoke-RestMethod "$apiBase/assessments/$assessmentId/submit" -Headers @{Authorization=("Basic {0}" -f $base64AuthInfo)} -Method Post -Body $body
